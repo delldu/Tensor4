@@ -23,7 +23,7 @@ import torch
 import torch.onnx
 import torch.onnx.utils
 from torch.onnx import ONNX_ARCHIVE_MODEL_PROTO_NAME, ExportTypes, OperatorExportTypes
-
+import pdb
 
 class GeneratorException(Exception):
     def __init__(self, message):
@@ -42,8 +42,10 @@ def generate(module, args=tuple(), kwargs=None):
         kwargs = {}
     if not isinstance(args, tuple):
         args = (args,)
-    trace, out = torch.jit.get_trace_graph(module, args, kwargs)
-    trace = torch.onnx.utils._optimize_graph(trace.graph(), OperatorExportTypes.ONNX)
+
+    # pdb.set_trace()
+    trace, out = torch.jit._get_trace_graph(module, args, kwargs)
+    trace = torch.onnx.utils._optimize_graph(trace, OperatorExportTypes.ONNX)
 
     #print(str(trace))
     p = Parser()
