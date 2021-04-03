@@ -24,6 +24,31 @@ import torch.onnx
 import torch.onnx.utils
 from torch.onnx import ONNX_ARCHIVE_MODEL_PROTO_NAME, ExportTypes, OperatorExportTypes
 import pdb
+import onnx
+
+def export_onnx(model, input):
+    """Export onnx model."""
+
+    onnx_file_name = "test.onnx"
+    model.eval()
+
+    # 2. Model export
+    print("Exporting onnx model to {}...".format(onnx_file_name))
+
+    input_names = ["input"]
+    output_names = ["output"]
+
+    torch.onnx.export(model, 
+                    input,
+                    onnx_file_name,
+                    input_names=input_names,
+                    output_names=output_names,
+                    verbose=True,
+                    opset_version=11,
+                    keep_initializers_as_inputs=False,
+                    export_params=True)
+
+
 
 class GeneratorException(Exception):
     def __init__(self, message):
@@ -43,6 +68,91 @@ def generate(module, args=tuple(), kwargs=None):
     if not isinstance(args, tuple):
         args = (args,)
 
+    export_onnx(module, args)
+
+    onnx_model = onnx.load("test.onnx")
+    
+    # onnx_model.graph
+    # onnx.helper.printable_graph(onnx_model.graph)
+    # nodes =onnx_model.graph.node
+    # for i in nodes: print(i.name)
+    # for i in nodes: print(i.name, i.op_type, i.input, i.output)
+    # ---->
+    # Conv_0 Conv ['input', 'features.0.weight', 'features.0.bias'] ['17']
+    # Relu_1 Relu ['17'] ['18']
+    # MaxPool_2 MaxPool ['18'] ['19']
+    # Conv_3 Conv ['19', 'features.3.weight', 'features.3.bias'] ['20']
+    # Relu_4 Relu ['20'] ['21']
+    # MaxPool_5 MaxPool ['21'] ['22']
+    # Conv_6 Conv ['22', 'features.6.weight', 'features.6.bias'] ['23']
+    # Relu_7 Relu ['23'] ['24']
+    # Conv_8 Conv ['24', 'features.8.weight', 'features.8.bias'] ['25']
+    # Relu_9 Relu ['25'] ['26']
+    # Conv_10 Conv ['26', 'features.10.weight', 'features.10.bias'] ['27']
+    # Relu_11 Relu ['27'] ['28']
+    # MaxPool_12 MaxPool ['28'] ['29']
+    # AveragePool_13 AveragePool ['29'] ['30']
+    # Flatten_14 Flatten ['30'] ['31']
+    # Gemm_15 Gemm ['31', 'classifier.1.weight', 'classifier.1.bias'] ['32']
+    # Relu_16 Relu ['32'] ['33']
+    # Gemm_17 Gemm ['33', 'classifier.4.weight', 'classifier.4.bias'] ['34']
+    # Relu_18 Relu ['34'] ['35']
+    # Gemm_19 Gemm ['35', 'classifier.6.weight', 'classifier.6.bias'] ['output']
+
+    # (Pdb) len(nodes) -- 20
+    # nodes[0]
+    # len(nodes[0].attribute) -- 5
+    # (Pdb) nodes[0].attribute[0]
+    # name: "dilations"
+    # ints: 1
+    # ints: 1
+    # type: INTS
+
+    # (Pdb) nodes[0]
+    # input: "input"
+    # input: "features.0.weight"
+    # input: "features.0.bias"
+    # output: "17"
+    # name: "Conv_0"
+    # op_type: "Conv"
+    # attribute {
+    #   name: "dilations"
+    #   ints: 1
+    #   ints: 1
+    #   type: INTS
+    # }
+    # attribute {
+    #   name: "group"
+    #   i: 1
+    #   type: INT
+    # }
+    # attribute {
+    #   name: "kernel_shape"
+    #   ints: 11
+    #   ints: 11
+    #   type: INTS
+    # }
+    # attribute {
+    #   name: "pads"
+    #   ints: 2
+    #   ints: 2
+    #   ints: 2
+    #   ints: 2
+    #   type: INTS
+    # }
+    # attribute {
+    #   name: "strides"
+    #   ints: 4
+    #   ints: 4
+    #   type: INTS
+    # }
+
+    # weights = onnx_model.graph.initializer
+    # from onnx import numpy_helper
+    # len(weights) -- 16
+    # numpy_helper.to_array(weights[0]).shape -- (4096,)
+    # weights[15].name
+
     # pdb.set_trace()
     trace, out = torch.jit._get_trace_graph(module, args, kwargs)
     trace = torch.onnx.utils._optimize_graph(trace, OperatorExportTypes.ONNX)
@@ -56,6 +166,8 @@ def generate(module, args=tuple(), kwargs=None):
     inputs, statements, return_vars = result
 
     vtable = VarTable(module)
+    pdb.set_trace()
+
     module_name = module.__class__.__name__
 
     # assign types for input vars
