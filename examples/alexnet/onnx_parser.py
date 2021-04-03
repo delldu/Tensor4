@@ -8,6 +8,13 @@
 # ***
 # ************************************************************************************/
 #
+#
+# nodes = onnx_model.graph.node
+# dir(onnx_model)
+# ['graph', 'ir_version', 'model_version', 'opset_import', 'producer_name', 'producer_version']
+# dir(onnx_model.graph)
+# ['initializer', 'input', 'name', 'node', 'output']
+
 
 import argparse
 import os
@@ -74,6 +81,7 @@ def MaxPool(node, attr_type, attr_ints):
 	parameters = []
 	parameters += [str(i) for i in attr_ints['kernel_shape']]
 	parameters += [str(i) for i in attr_ints['strides']]
+	parameters += [str(i) for i in attr_ints['pads'][0:2]]
 
 	output = []
 	output.append("MaxPool{}d".format(ndim))
@@ -83,15 +91,12 @@ def MaxPool(node, attr_type, attr_ints):
 
 	return "".join(output)
 
-register_attribute_functions("MaxPool", MaxPool)
-
-
 def Conv(node, attr_type, attr_ints):
 	ndim = len(attr_ints['kernel_shape'])
 	parameters = []
 	parameters += [str(i) for i in attr_ints['kernel_shape']]
 	parameters += [str(i) for i in attr_ints['strides']]
-	parameters += [str(i) for i in attr_ints['pads']]
+	parameters += [str(i) for i in attr_ints['pads'][0:2]]
 	parameters += [str(i) for i in attr_ints['dilations']]
 
 	output = []
@@ -102,22 +107,26 @@ def Conv(node, attr_type, attr_ints):
 
 	return "".join(output)
 
-register_attribute_functions("Conv", Conv)
 
+def AveragePool(node, attr_type, attr_ints):
+	ndim = len(attr_ints['kernel_shape'])
+	parameters = []
+	parameters += [str(i) for i in attr_ints['kernel_shape']]
+	parameters += [str(i) for i in attr_ints['strides']]
 
+	output = []
+	output.append("AveragePool{}d".format(ndim))
+	output.append("<")
+	output.append(", ".join(parameters))
+	output.append(">")
 
+	return "".join(output)
 
-# nodes = onnx_model.graph.node
-# dir(onnx_model)
-# ['graph', 'ir_version', 'model_version', 'opset_import', 'producer_name', 'producer_version']
-# dir(onnx_model.graph)
-# ['initializer', 'input', 'name', 'node', 'output']
 
 def get_forward_args(graph_input):
 	'''
 		t4::tensor2f AlexNetForward(const AlexNet& ctx, t4::tensor4f xinput_1)
 	'''
-
 	output = []
 	for i in range(len(graph_input)):
 		name = graph_input[i].name
@@ -305,6 +314,11 @@ if __name__ == '__main__':
 	if not os.path.exists(args.model):
 		print("Onnx model does not exist, stop.")
 		sys.exit(-1)
+
+
+	register_attribute_functions("Conv", Conv)
+	register_attribute_functions("MaxPool", MaxPool)
+	register_attribute_functions("AveragePool", AveragePool)
 
 	model = onnx.load(args.model)
 	if os.path.exists("{}.h".format(args.network)):
