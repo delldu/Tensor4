@@ -25,12 +25,18 @@ AlexNet AlexNetLoad(const char* filename)
 }
 
 
+
 t4::tensor2f AlexNetForward(const AlexNet& ctx, t4::tensor4f xinput_1)
 {
 	t4::tensor4f x17 = t4::Conv2d<11, 11, 4, 4, 2, 2, 1, 1>(xinput_1, ctx.features_0_weight, ctx.features_0_bias); //features.0
 	t4::release(xinput_1);
 	t4::tensor4f x18 = t4::ReluInplace(x17); //features.1
 	t4::release(x17);
+
+	// t4:tensor4f ['17'] = t4::Conv<>(['input', 'features.0.weight', 'features.0.bias']);
+	// t4:tensor4f ['18'] = t4::Relu<>(['17']);
+
+
 	t4::tensor4f x19 = t4::MaxPool2d<3, 3, 2, 2, 0, 0>(x18); //features.2
 	t4::release(x18);
 	t4::tensor4f x20 = t4::Conv2d<5, 5, 1, 1, 2, 2, 1, 1>(x19, ctx.features_3_weight, ctx.features_3_bias); //features.3
