@@ -64,28 +64,48 @@ system_t_data_type_names = {
 	16: "?", # "BFLOAT16"
 }
 
-system_attribute_functions = {}
+system_node_operator_functions = {}
 
 def register_attribute_functions(name, afunc):
-	system_attribute_functions[name] = afunc
-
+	system_node_operator_functions[name] = afunc
 
 def MaxPool(node, attr_type, attr_ints):
-	pdb.set_trace()
+	ndim = len(attr_ints['kernel_shape'])
+	parameters = []
+	parameters += [str(i) for i in attr_ints['kernel_shape']]
+	parameters += [str(i) for i in attr_ints['strides']]
 
-	return ""
-    # def __init__(self, lhs, rhs, vtable):
-    #     Emitter.__init__(self, lhs, rhs, vtable)
-    #     self.make_output_same_as_first_arg()
+	output = []
+	output.append("MaxPool{}d".format(ndim))
+	output.append("<")
+	output.append(", ".join(parameters))
+	output.append(">")
 
-    #     self.validate_arg_return_count(1, 1)
+	return "".join(output)
 
-    #     self.append_parameter('kernel_shape', templated=True)
-    #     self.append_parameter('strides', templated=True)
-    #     self.append_parameter('pads', templated=True, padding=True)
-
-    #     self.name = "MaxPool%dd" % self.get_dim()
 register_attribute_functions("MaxPool", MaxPool)
+
+
+def Conv(node, attr_type, attr_ints):
+	ndim = len(attr_ints['kernel_shape'])
+	parameters = []
+	parameters += [str(i) for i in attr_ints['kernel_shape']]
+	parameters += [str(i) for i in attr_ints['strides']]
+	parameters += [str(i) for i in attr_ints['pads']]
+	parameters += [str(i) for i in attr_ints['dilations']]
+
+	output = []
+	output.append("Conv{}d".format(ndim))
+	output.append("<")
+	output.append(", ".join(parameters))
+	output.append(">")
+
+	return "".join(output)
+
+register_attribute_functions("Conv", Conv)
+
+
+
 
 # nodes = onnx_model.graph.node
 # dir(onnx_model)
@@ -131,7 +151,7 @@ def get_forward_declare(model, class_name):
 		get_forward_args(model.graph.input))
 	return output
 
-def get_node_attribues(node):
+def get_node_operators(node):
 	# [name: "dilations"
 	# ints: [1, 1]
 	# type: INTS
@@ -145,8 +165,8 @@ def get_node_attribues(node):
 	# ints: [4, 4]
 	# type: INTS
 	# ]
-	if not node.name in system_attribute_functions:
-		return ""
+	if not node.op_type in system_node_operator_functions:
+		return node.op_type
 
 	attr_ints = {}
 	attr_type = {}
@@ -154,7 +174,7 @@ def get_node_attribues(node):
 		attr_ints[a.name] = a.ints
 		attr_type[a.name] = a.type
 
-	output = system_attribute_functions[node.name](node, attr_type, attr_ints)
+	output = system_node_operator_functions[node.op_type](node, attr_type, attr_ints)
 	return output
 
 def create_head_file(onnx_model, class_name):
@@ -190,8 +210,12 @@ def create_head_file(onnx_model, class_name):
 	# Define forward function
 	output.append(get_forward_declare(onnx_model, class_name) + ";")
 
-	with open(class_name + ".h", "w") as source_h:
-		source_h.write("\n".join(output))
+	# with open(class_name + ".h", "w") as source_h:
+	# 	source_h.write("\n".join(output))
+	print("--------------------------------------------------------")
+	print("\n".join(output))
+	print("--------------------------------------------------------")
+
 	print("OK.")
 
 
@@ -251,17 +275,20 @@ def create_cpp_file(onnx_model, class_name):
 	for node in onnx_model.graph.node:
 		node_input = [("ctr." + e) if e in weights else ("x" + e) for e in node.input]
 		node_output = [("ctr." + e) if e in weights else ("x" + e) for e in node.output]
-		node_attrs = get_node_attribues(node)
-		output.append("	auto {} = t4::{}<{}>({})".format(
-			", ".join(node_output), node.op_type, node_attrs, ", ".join(node_input)) + ";")
+		node_function = get_node_operators(node)
+		output.append("	auto {} = t4::{}({})".format(
+			", ".join(node_output), node_function, ", ".join(node_input)) + ";")
 
 	output.append("")
 	output.append("	return {};".format(", ".join(node_output)))
 	#}
 	output.append("}")
 
-	with open(class_name + ".cpp", "w") as source_cpp:
-		source_cpp.write("\n".join(output))
+	# with open(class_name + ".cpp", "w") as source_cpp:
+	# 	source_cpp.write("\n".join(output))
+	print("--------------------------------------------------------")
+	print("\n".join(output))
+	print("--------------------------------------------------------")
 
 	print("OK.")
 
