@@ -26,6 +26,125 @@ from onnx import numpy_helper
 
 import pdb
 
+class GraphParser:
+	'''
+	make_graph(nodes,name,inputs,outputs,initializer=None,doc_string=None,value_info=[])
+	    nodes: NodeProto list, e.g:	[node1,node2,node3,…]
+	    name: String
+	    inputs:	ValueInfoProto list
+	    outputs: ValueInfoProto list
+	    initializer: TensorProto list
+	    doc_string: String
+	    value_info: ValueInfoProto list
+	'''
+
+	def __init__(self, graph):
+		self.graph = graph
+
+		self.used_vars = set()
+
+		self.var_type = {}
+		self.var_shape = {}
+
+		self.node_attr_type = {}
+		self.node_attr_ints = {}
+
+		self.const_type = {}
+		self.const_dims = {}
+
+	def parse(self):
+		# int used_vars
+		for o in self.graph.output:
+			# etype = o.type.tensor_type.elem_type
+			# ndims = o.type.tensor_type.shape
+			self.used_vars.add(o.name)
+
+		node_list = [n for n in self.graph.node]
+		need_checking = True
+		while need_checking:
+			need_checking = False
+			for n in node_list:
+				if self.node_used(n):
+					# Add all node.input to used_vars
+					for i in n.input:
+						self.used_vars.add(i)
+					need_checking = True
+					node_list.remove(n)
+					break
+
+		for i in self.graph.input:
+			# name = i.name
+			# etype = i.type.tensor_type.elem_type
+			# shape = i.type.tensor_type.shape
+			print("i -- ", i)
+			name, dtype, shape = self.tensor_value_info_parse(i)
+			self.var_type[name] = dtype
+			self.var_shape[name] = shape
+			print(name, dtype, shape)
+
+		for o in self.graph.output:
+			# name = graph_input[i].name
+			# etype = system_t_data_type_names[graph_input[i].type.tensor_type.elem_type]
+			# ndims = str(graph_input[i].type.tensor_type.shape).count("dim {")
+			print("o --- ", o)
+			name, dtype, shape = self.tensor_value_info_parse(o)
+			self.var_type[name] = dtype
+			self.var_shape[name] = shape
+			print(name, dtype, shape)
+
+		for w in self.graph.initializer:
+			# TensorProto
+			print(w.name, w.data_type, w.dims)
+			self.const_type[w.name] = w.data_type
+			self.const_dims[w.name] = w.dims
+
+			# w_step = 16
+			# w_name = "w_" + w.name.replace(".", "_") + "_buf"
+			# print(f"uint8_t {w_name}[] = {{ ")
+			# for i in range(0, len(w.raw_data), w_step):
+			# 	w_bytes = ', '.join(['0x%02x'%b for b in w.raw_data[i : i + w_step]])
+			# 	print(f"    {w_bytes},")
+			# print(f"}};")
+
+		for n in self.graph.node:
+			print(n)
+			attr_type, attr_ints = self.node_attribute_parse(n)
+			self.node_attr_type[n.name] = attr_type
+			self.node_attr_ints[n.name] = attr_ints
+
+	def var_used(self, name):
+		return name in self.used_vars
+
+	def node_used(self, node):
+		for o in node.output:
+			if self.var_used(o):
+				return True
+		return False
+
+	def tensor_value_info_parse(self, t):
+		# make_tensor_value_info(name,elem_type,shape,doc_string="",shape_denotation=None) --> ValueInfoProto
+
+		name = t.name
+		etype = t.type.tensor_type.elem_type
+		shape = t.type.tensor_type.shape
+
+		return name, etype, shape
+
+	def node_attribute_parse(self, node):
+		# make_attribute(key,value,doc_string=None) --> AttributeProto
+		attr_ints = {}
+		attr_type = {}
+		for a in node.attribute:
+			if (len(a.ints)) == 0:
+				attr_ints[a.name] = a.i
+			else:
+				attr_ints[a.name] = a.ints
+			attr_type[a.name] = a.type
+		return attr_type, attr_ints
+
+
+
+
 # https://pytorch.org/docs/stable/onnx.html
 # https://github.com/onnx/onnx
 # https://github.com/onnx/onnx/blob/master/docs/IR.md
@@ -122,7 +241,6 @@ def AveragePool(node, attr_type, attr_ints):
 
 	return "".join(output)
 
-
 def get_forward_args(graph_input):
 	'''
 		t4::tensor2f AlexNetForward(const AlexNet& ctx, t4::tensor4f xinput_1)
@@ -174,14 +292,27 @@ def get_node_operators(node):
 	# ints: [4, 4]
 	# type: INTS
 	# ]
+
+	# if node.op_type == 'Clip':
+	# 	pdb.set_trace()
+
+
 	if not node.op_type in system_node_operator_functions:
 		return node.op_type
+
 
 	attr_ints = {}
 	attr_type = {}
 	for a in node.attribute:
-		attr_ints[a.name] = a.ints
+		if (len(a.ints)) == 0:
+			attr_ints[a.name] = a.i
+		else:
+			attr_ints[a.name] = a.ints
 		attr_type[a.name] = a.type
+
+	# attr_ints
+	# {'dilations': [1, 1], 'group': 1, 'kernel_shape': [3, 3], 'pads': [1, 1, 1, 1], 'strides': [1, 1]}
+
 
 	output = system_node_operator_functions[node.op_type](node, attr_type, attr_ints)
 	return output
@@ -211,6 +342,8 @@ def create_head_file(onnx_model, class_name):
 	output.append("struct " + class_name + " {")
 	for w in onnx_model.graph.initializer:
 		output.append("	t4::tensor{}f {};".format(len(w.dims), w.name))
+		pdb.set_trace()
+		
 	output.append("};")
 	output.append("")
 	output.append("{} {}Load(const char* filename);\n".format(class_name, class_name))
@@ -321,6 +454,10 @@ if __name__ == '__main__':
 	register_attribute_functions("AveragePool", AveragePool)
 
 	model = onnx.load(args.model)
+	onnx_parser = GraphParser(model.graph)
+	onnx_parser.parse()
+	pdb.set_trace()
+
 	if os.path.exists("{}.h".format(args.network)):
 		print("File {}.h exist, stop.".format(args.network))
 		sys.exit(-1)
